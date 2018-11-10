@@ -163,8 +163,13 @@ public class ClassPathApplicationContextTest {
     public void testPostProcessBeforeInitialization() {
         String testClass = "123";
         Map<String, Bean> beans = prepareBeans(testClass, "testClass");
-        BeanPostProcessorTestImpl testPostProcessor = new BeanPostProcessorTestImpl();
+        String otherClass  = "456";
         Bean bean = new Bean();
+        bean.setId("otherClass");
+        bean.setValue(otherClass);
+        beans.put(bean.getId(), bean);
+        BeanPostProcessorTestImpl testPostProcessor = new BeanPostProcessorTestImpl();
+        bean = new Bean();
         bean.setId("postProcessor");
         bean.setValue(testPostProcessor);
         beans.put(bean.getId(), bean);
@@ -173,6 +178,7 @@ public class ClassPathApplicationContextTest {
         context.postProcessBeforeInitialization(beans);
 
         assertEquals("Hello world", beans.get("testClass").getValue());
+        assertEquals("456", beans.get("otherClass").getValue());
     }
 }
 
