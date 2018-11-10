@@ -95,5 +95,3 @@ public class XmlBeanDefinitionReader implements BeanDefinitionReader {
         }
     }
 }
-
-

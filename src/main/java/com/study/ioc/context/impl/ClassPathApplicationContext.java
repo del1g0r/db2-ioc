@@ -5,6 +5,7 @@ import com.study.ioc.context.exception.BeanInstantiationException;
 import com.study.ioc.context.entity.Bean;
 import com.study.ioc.context.entity.BeanDefinition;
 
+import javax.annotation.PostConstruct;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
@@ -19,10 +20,88 @@ public class ClassPathApplicationContext implements ApplicationContext {
 
     public ClassPathApplicationContext(BeanDefinitionReader reader) {
         List<BeanDefinition> beanDefinitions = reader.readBeanDefinitions();
-        this.beans = injectRefDepenencies(beanDefinitions
-                , injectValueDepenencies(beanDefinitions
-                        , constructBeans(beanDefinitions))
+        processBeanFactoryPostProcessor(beanDefinitions);
+        this.beans = postProcessAfterInitialization(
+                processPostConstruct(
+                        postProcessBeforeInitialization(
+                                injectRefDepenencies(beanDefinitions,
+                                        injectValueDepenencies(beanDefinitions,
+                                                constructBeans(beanDefinitions
+                                                )
+                                        )
+                                )
+                        )
+                )
         );
+    }
+
+    void processBeanFactoryPostProcessor(List<BeanDefinition> beanDefinitions) {
+        for (BeanDefinition beanDefinition : beanDefinitions) {
+            try {
+                Class<?> beanClass = Class.forName(beanDefinition.getClassName());
+                if (BeanFactoryPostProcessor.class.isAssignableFrom(beanClass)) {
+                    Constructor<?> constructor = beanClass.getConstructor();
+                    BeanFactoryPostProcessor beanFactoryPostProcessor = (BeanFactoryPostProcessor) constructor.newInstance();
+                    beanFactoryPostProcessor.postProcessBeanFactory(beanDefinitions);
+                }
+            } catch (InstantiationException | InvocationTargetException | NoSuchMethodException | IllegalAccessException | ClassNotFoundException e) {
+                throw new BeanInstantiationException("Couldn't process bean factory " + beanDefinition.getId());
+            }
+        }
+    }
+
+    Map<String, Bean> postProcessBeforeInitialization(Map<String, Bean> beans) {
+        for (Map.Entry<String, Bean> entry : beans.entrySet()) {
+            try {
+                Class<?> beanClass = entry.getValue().getValue().getClass();
+                if (BeanPostProcessor.class.isAssignableFrom(beanClass)) {
+                    Constructor<?> constructor = beanClass.getConstructor();
+                    BeanPostProcessor beanBeanPostProcessor = (BeanPostProcessor) constructor.newInstance();
+                    for (Map.Entry<String, Bean> entry0 : beans.entrySet()) {
+                        Bean bean = entry0.getValue();
+                        bean.setValue(beanBeanPostProcessor.postProcessBeforeInitialization(bean.getValue(), bean.getId()));
+                    }
+                }
+            } catch (InstantiationException | InvocationTargetException | NoSuchMethodException | IllegalAccessException e) {
+                throw new BeanInstantiationException("Couldn't process \"before\" initialization" + entry.getKey());
+            }
+        }
+        return beans;
+    }
+
+    Map<String, Bean> postProcessAfterInitialization(Map<String, Bean> beans) {
+        for (Map.Entry<String, Bean> entry : beans.entrySet()) {
+            try {
+                Class<?> beanClass = entry.getValue().getValue().getClass();
+                if (BeanPostProcessor.class.isAssignableFrom(beanClass)) {
+                    Constructor<?> constructor = beanClass.getConstructor();
+                    BeanPostProcessor beanBeanPostProcessor = (BeanPostProcessor) constructor.newInstance();
+                    for (Map.Entry<String, Bean> entry0 : beans.entrySet()) {
+                        Bean bean = entry0.getValue();
+                        bean.setValue(beanBeanPostProcessor.postProcessAfterInitialization(bean.getValue(), bean.getId()));
+                    }
+                }
+            } catch (InstantiationException | InvocationTargetException | NoSuchMethodException | IllegalAccessException e) {
+                throw new BeanInstantiationException("Couldn't process \"after\" initialization " + entry.getKey());
+            }
+        }
+        return beans;
+    }
+
+    Map<String, Bean> processPostConstruct(Map<String, Bean> beans) {
+        for (Map.Entry<String, Bean> entry : beans.entrySet()) {
+            try {
+                Object object = entry.getValue().getValue();
+                for (Method method : object.getClass().getMethods()) {
+                    if (method.getAnnotation(PostConstruct.class) != null) {
+                        method.invoke(object);
+                    }
+                }
+            } catch (IllegalAccessException | InvocationTargetException e) {
+                throw new BeanInstantiationException("Couldn't process \"post\" construct " + entry.getKey());
+            }
+        }
+        return beans;
     }
 
     @Override
@@ -36,43 +115,46 @@ public class ClassPathApplicationContext implements ApplicationContext {
     }
 
     @Override
-    @SuppressWarnings("unchecked")
     public <T> T getBean(Class<T> clazz) {
-        Iterator iterator = beans.entrySet().iterator();
-        while (iterator.hasNext()) {
-            Map.Entry entry = (Map.Entry) iterator.next();
-            Bean bean = (Bean) entry.getValue();
-            Object object = bean.getValue();
-            if (object.getClass().equals(clazz))
-                return (T) object;
+        Object object = null;
+        for (Map.Entry<String, Bean> entry : beans.entrySet()) {
+            if (clazz.isAssignableFrom(entry.getValue().getValue().getClass()))
+                if (object == null) {
+                    object = entry.getValue();
+                } else {
+                    throw new BeanInstantiationException("Not unique bean for class " + clazz.getName());
+                }
         }
-        return null;
+        return clazz.cast(object);
     }
 
     @Override
-    @SuppressWarnings("unchecked")
     public <T> T getBean(String id, Class<T> clazz) {
         Object object = getBean(id);
-        return (T) object;
+        if (clazz.isAssignableFrom(object.getClass())) {
+            return clazz.cast(object);
+        } else {
+            throw new BeanInstantiationException("Is not assignable class of bean " + object.getClass().getName() + " for " + clazz.getName());
+        }
     }
 
     Map<String, Bean> constructBeans(List<BeanDefinition> beanDefinitions) {
-        try {
-            Map<String, Bean> beans = new HashMap<>();
-            for (BeanDefinition beanDefinition : beanDefinitions) {
-                Class<?> clazz = Class.forName(beanDefinition.getClassName());
-                Constructor<?> constructor = clazz.getConstructor();
+        Map<String, Bean> beans = new HashMap<>();
+        for (BeanDefinition beanDefinition : beanDefinitions) {
+            try {
+                Class<?> classBean = Class.forName(beanDefinition.getClassName());
+                Constructor<?> constructor = classBean.getConstructor();
                 Object object = constructor.newInstance();
                 Bean bean = new Bean();
                 bean.setId(beanDefinition.getId());
                 bean.setValue(object);
                 beans.put(bean.getId(), bean);
+            } catch (ClassNotFoundException | NoSuchMethodException | IllegalAccessException | InvocationTargetException | InstantiationException e) {
+                e.printStackTrace();
+                throw new BeanInstantiationException("Can't construct bean" + beanDefinition.getId(), e);
             }
-            return beans;
-        } catch (ClassNotFoundException | NoSuchMethodException | IllegalAccessException | InvocationTargetException | InstantiationException e) {
-            e.printStackTrace();
-            throw new BeanInstantiationException("Can't construct bean", e);
         }
+        return beans;
     }
 
     Method getMethodByName(String methodName, Class clazz) {
@@ -133,14 +215,13 @@ public class ClassPathApplicationContext implements ApplicationContext {
         }
     }
 
-    Map<String, Bean> injectRefDepenencies
-            (List<BeanDefinition> beanDefinitions, Map<String, Bean> beans) {
+    Map<String, Bean> injectRefDepenencies(List<BeanDefinition> beanDefinitions, Map<String, Bean> beans) {
         try {
             for (BeanDefinition beanDefinition : beanDefinitions) {
                 Bean bean = beans.get(beanDefinition.getId());
                 Object object = bean.getValue();
                 Map<String, String> dependencies = beanDefinition.getRefDependencies();
-                for (Map.Entry<String,String> entry : dependencies.entrySet()) {
+                for (Map.Entry<String, String> entry : dependencies.entrySet()) {
                     Method method = getMethodByName("set" + entry.getKey(), object.getClass());
                     method.invoke(object, beans.get(entry.getValue()).getValue());
                 }
