@@ -97,7 +97,7 @@ public class ClassPathApplicationContextTest {
 
     public static class BeanFactoryPostProcessorTestImpl implements BeanFactoryPostProcessor {
 
-        private boolean  flagFactoryExecuted;
+        private boolean flagFactoryExecuted;
 
         public boolean isFlagFactoryExecuted() {
             return flagFactoryExecuted;
@@ -109,12 +109,18 @@ public class ClassPathApplicationContextTest {
         }
     }
 
-    private Map<String, Bean> prepareBeans(Object object, String name) {
-        Map<String, Bean> beans = new HashMap<>();
+    private Bean getBean(String name, Object object) {
         Bean bean = new Bean();
         bean.setId(name);
         bean.setValue(object);
-        beans.put(bean.getId(), bean);
+        return bean;
+    }
+
+    private Map<String, Bean> prepareBeans(Bean[] arrBeans) {
+        Map<String, Bean> beans = new HashMap<>();
+        for (Bean bean : arrBeans) {
+            beans.put(bean.getId(), bean);
+        }
         return beans;
     }
 
@@ -135,7 +141,7 @@ public class ClassPathApplicationContextTest {
     @Test
     public void testInjectValueDepenencies() {
         TestClass testClass = new TestClass();
-        Map<String, Bean> beans = prepareBeans(testClass, "testClass");
+        Map<String, Bean> beans = prepareBeans(new Bean[]{getBean("testClass", testClass)});
         List<BeanDefinition> beanDefinitions = prepareBeanDefinitions("testClass");
 
         ClassPathApplicationContext context = new ClassPathApplicationContext();
@@ -150,7 +156,7 @@ public class ClassPathApplicationContextTest {
     @Test
     public void testProcessPostConstruct() {
         TestClass testClass = new TestClass();
-        Map<String, Bean> beans = prepareBeans(testClass, "testClass");
+        Map<String, Bean> beans = prepareBeans(new Bean[]{getBean("testClass", testClass)});
 
         ClassPathApplicationContext context = new ClassPathApplicationContext();
         context.processPostConstruct(beans);
@@ -162,17 +168,9 @@ public class ClassPathApplicationContextTest {
     @Test
     public void testPostProcessBeforeInitialization() {
         String testClass = "123";
-        Map<String, Bean> beans = prepareBeans(testClass, "testClass");
-        String otherClass  = "456";
-        Bean bean = new Bean();
-        bean.setId("otherClass");
-        bean.setValue(otherClass);
-        beans.put(bean.getId(), bean);
+        String otherClass = "456";
         BeanPostProcessorTestImpl testPostProcessor = new BeanPostProcessorTestImpl();
-        bean = new Bean();
-        bean.setId("postProcessor");
-        bean.setValue(testPostProcessor);
-        beans.put(bean.getId(), bean);
+        Map<String, Bean> beans = prepareBeans(new Bean[]{getBean("testClass", testClass), getBean("otherClass", otherClass), getBean("postProcessor", testPostProcessor)});
 
         ClassPathApplicationContext context = new ClassPathApplicationContext();
         context.postProcessBeforeInitialization(beans);
