@@ -1,5 +1,6 @@
 package com.study.ioc.context.impl;
 
+import com.study.ioc.annotation.ResourceService;
 import com.study.ioc.context.*;
 import com.study.ioc.context.exception.BeanInstantiationException;
 import com.study.ioc.context.entity.Bean;
@@ -120,7 +121,7 @@ public class ClassPathApplicationContext implements ApplicationContext {
         for (Map.Entry<String, Bean> entry : beans.entrySet()) {
             if (clazz.isAssignableFrom(entry.getValue().getValue().getClass()))
                 if (object == null) {
-                    object = entry.getValue();
+                    object = entry.getValue().getValue();
                 } else {
                     throw new BeanInstantiationException("Not unique bean for class " + clazz.getName());
                 }
@@ -230,6 +231,23 @@ public class ClassPathApplicationContext implements ApplicationContext {
         } catch (InvocationTargetException | IllegalAccessException e) {
             e.printStackTrace();
             throw new BeanInstantiationException("Can't inject reference", e);
+        }
+    }
+
+    @Override
+    public void defferedInjectDepenencies(Object object) {
+        for (Method method : object.getClass().getMethods()) {
+            if (method.getParameterCount() == 1) {
+                for (ResourceService annotationResource : method.getAnnotationsByType(ResourceService.class)) {
+                    try {
+                        Object injObject = annotationResource.name().isEmpty() ? getBean(method.getParameterTypes()[0]) : getBean(annotationResource.name());
+                        method.invoke(object, injObject);
+                    } catch (IllegalAccessException | InvocationTargetException e) {
+                        e.printStackTrace();
+                        throw new BeanInstantiationException("Can't inject reference via method " + method.getName(), e);
+                    }
+                }
+            }
         }
     }
 }

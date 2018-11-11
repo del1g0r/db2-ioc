@@ -15,7 +15,7 @@ import static org.junit.Assert.assertTrue;
 
 public class ClassPathApplicationContextTest {
 
-    public static class TestClass {
+    private static class TestClass {
 
         private boolean boolValue;
         private Integer intValue;
